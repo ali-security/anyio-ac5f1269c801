@@ -119,8 +119,21 @@ class TLSStream(ByteStream):
 
         bio_in = ssl.MemoryBIO()
         bio_out = ssl.MemoryBIO()
+
+        # Resolve international host names using IDNA 2008.
+        # Otherwise wrap_bio() would resolve them with IDNA 2003.
+        if hostname is not None:
+            from .._core._sockets import idna2008_resolve
+
+            server_hostname: bytes | None = idna2008_resolve(hostname)
+        else:
+            server_hostname = None
+
         ssl_object = ssl_context.wrap_bio(
-            bio_in, bio_out, server_side=server_side, server_hostname=hostname
+            bio_in,
+            bio_out,
+            server_side=server_side,
+            server_hostname=server_hostname,
         )
         wrapper = cls(
             transport_stream=transport_stream,

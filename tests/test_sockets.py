@@ -23,6 +23,7 @@ from _pytest.fixtures import SubRequest
 from _pytest.logging import LogCaptureFixture
 from _pytest.monkeypatch import MonkeyPatch
 from _pytest.tmpdir import TempPathFactory
+from pytest_mock import MockerFixture
 
 from anyio import (
     BrokenResourceError,
@@ -47,7 +48,9 @@ from anyio import (
     sleep,
     wait_all_tasks_blocked,
 )
+from anyio._core._eventloop import get_async_backend
 from anyio.abc import (
+    AnyByteStream,
     IPSockAddrType,
     Listener,
     SocketAttribute,
@@ -55,6 +58,7 @@ from anyio.abc import (
     SocketStream,
 )
 from anyio.streams.stapled import MultiListener
+from anyio.streams.tls import TLSStream
 
 if sys.version_info < (3, 11):
     from exceptiongroup import ExceptionGroup
@@ -475,6 +479,34 @@ class TestTCPStream:
 
         thread.join()
         assert thread_exception is None
+
+    async def test_connect_tcp_with_tls_unicode_hostname(
+        self,
+        server_sock: socket.socket,
+        server_addr: tuple[str, int],
+        family: AnyIPAddressFamily,
+        mocker: MockerFixture,
+    ) -> None:
+        """
+        Test that connect_tcp() forwards the target host name to ``TLSStream.wrap()``
+        as-is, deferring the matching against the peer certificate (and any IDNA
+        encoding required for that) to it.
+
+        """
+        gai_result = socket.getaddrinfo(
+            server_addr[0], server_addr[1], family, socket.SOCK_STREAM
+        )
+        mocker.patch.object(get_async_backend(), "getaddrinfo", return_value=gai_result)
+
+        async def fake_wrap(
+            transport_stream: AnyByteStream, **kwargs: Any
+        ) -> AnyByteStream:
+            await transport_stream.aclose()
+            return transport_stream
+
+        wrap = mocker.patch.object(TLSStream, "wrap", side_effect=fake_wrap)
+        await connect_tcp("faß.de", server_addr[1], tls=True)
+        assert wrap.call_args.kwargs["hostname"] == "faß.de"
 
     @pytest.mark.parametrize("anyio_backend", ["asyncio"])
     async def test_unretrieved_future_exception_server_crash(
