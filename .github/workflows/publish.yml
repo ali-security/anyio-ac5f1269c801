@@ -1,38 +1,38 @@
 name: Publish packages to PyPI
 
 on:
-  push:
-    tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
-      - "[0-9]+.[0-9]+.[0-9]+.post[0-9]+"
-      - "[0-9]+.[0-9]+.[0-9]+[a-b][0-9]+"
-      - "[0-9]+.[0-9]+.[0-9]+rc[0-9]+"
+  workflow_dispatch:
 
 jobs:
   build:
     name: Build the source tarball and the wheel
     runs-on: ubuntu-latest
-    environment: release
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.x
+        python-version: "3.12"
     - name: Install dependencies
-      run: pip install build
+      run: pip install build "setuptools==70.0.0" "setuptools_scm==8.1.0" "wheel==0.43.0"
     - name: Create packages
-      run: python -m build
+      run: python -m build --no-isolation
+      env:
+        SETUPTOOLS_SCM_PRETEND_VERSION: "4.4.0"
     - name: Archive packages
       uses: actions/upload-artifact@v4
       with:
         name: dist
         path: dist
+        if-no-files-found: error
 
   publish:
     name: Publish build artifacts to the PyPI
+    if: false
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: release
     permissions:
       id-token: write
@@ -44,8 +44,10 @@ jobs:
 
   release:
     name: Create a GitHub release
+    if: false
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
